@@ -48,7 +48,7 @@ upload_images() {
     local current_url
     current_url=$(playwright-cli eval "window.location.href" 2>/dev/null || echo "")
     
-    if [[ "$current_url" == *"$host"* && "$current_url" == *"/issues/"* ]]; then
+    if [[ "$current_url" == *"$host"* && ( "$current_url" == *"/issues/"* || "$current_url" == *"/pull/"* ) ]]; then
       echo "Page loaded." >&2
       break
     fi
