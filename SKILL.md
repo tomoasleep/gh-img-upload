@@ -1,6 +1,13 @@
 ---
 name: gh-img-upload
-description: Upload images to GitHub Issues/PRs and get URLs without creating comments. Use when: sharing test screenshots to GitHub Issues/PRs, creating bug reports with images, UI review support, uploading images from automated scripts or CI/CD pipelines, posting screenshots from Playwright/E2E tests. GitHub CLI extension for automated image uploads.
+description: |
+  Upload images to GitHub Issues/PRs and get URLs without creating comments.
+  Use when:
+  - sharing test screenshots to GitHub Issues/PRs
+  - creating bug reports with images
+  - UI review support
+  - uploading images from automated scripts or CI/CD pipelines
+  - posting screenshots from Playwright/E2E tests.
 ---
 
 GitHub Issue/PR に画像をアップロードし、URL を返す gh CLI の拡張機能。
