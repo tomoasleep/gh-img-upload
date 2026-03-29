@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="0.1.0"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/../lib"
+
+source "${LIB_DIR}/session.sh"
+source "${LIB_DIR}/upload.sh"
+
+usage() {
+  cat <<'USAGE'
+Usage: gh img-upload <command> [options]
+
+Commands:
+  login   Create a browser session for GitHub (persistent login)
+  upload  Upload images and return URLs
+
+Upload Options:
+  --repo <owner/repo>   Target repository (default: current repo)
+  --issue <number>      Issue or PR number (required)
+  --image <path>        Image file path to upload (required, can be repeated)
+  --json                Output as JSON format
+  --headed              Run browser in headed mode (visible)
+
+Login Options:
+  --host <host>         GitHub host (default: github.com)
+  --headed              Run browser in headed mode (visible)
+
+Examples:
+  # Login to GitHub (opens browser for authentication)
+  gh img-upload login --headed
+
+  # Login to GitHub Enterprise
+  gh img-upload login --host github.mycompany.com --headed
+
+  # Upload image to an issue
+  gh img-upload upload --issue 123 --image ./screenshot.png
+
+  # Upload multiple images
+  gh img-upload upload --repo owner/repo --issue 456 --image ./before.png --image ./after.png
+
+  # JSON output
+  gh img-upload upload --issue 123 --image ./test.png --json
+USAGE
+}
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: gh CLI is required." >&2
+  exit 1
+fi
+
+if ! command -v playwright-cli >/dev/null 2>&1; then
+  echo "Error: playwright-cli is required. Install with: npm install -g @playwright/cli" >&2
+  exit 1
+fi
+
+if [[ $# -lt 1 ]]; then
+  usage
+  exit 1
+fi
+
+command="$1"
+shift
+
+case "$command" in
+  login)
+    host="github.com"
+    headed=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --host) host="$2"; shift 2;;
+        --headed) headed="--headed"; shift;;
+        -h|--help) usage; exit 0;;
+        *)
+          echo "Unknown argument: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+    session_login "$host" "$headed"
+    ;;
+  upload)
+    repo=""
+    issue=""
+    images=()
+    json_output=""
+    headed=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --repo) repo="$2"; shift 2;;
+        --issue) issue="$2"; shift 2;;
+        --image) images+=("$2"); shift 2;;
+        --json) json_output="true"; shift;;
+        --headed) headed="--headed"; shift;;
+        -h|--help) usage; exit 0;;
+        *)
+          echo "Unknown argument: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+
+    if [[ -z "$issue" ]]; then
+      echo "Error: --issue is required." >&2
+      usage
+      exit 1
+    fi
+
+    if [[ ${#images[@]} -eq 0 ]]; then
+      echo "Error: At least one --image is required." >&2
+      usage
+      exit 1
+    fi
+
+    for img in "${images[@]}"; do
+      if [[ ! -f "$img" ]]; then
+        echo "Error: Image not found: $img" >&2
+        exit 1
+      fi
+    done
+
+    if [[ -z "$repo" ]]; then
+      repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+    fi
+
+    host=$(get_host_from_repo "$repo")
+    
+    upload_args=("$repo" "$issue")
+    for img in "${images[@]}"; do
+      upload_args+=("$img")
+    done
+    if [[ -n "$json_output" ]]; then
+      upload_args+=("--json")
+    fi
+    if [[ -n "$headed" ]]; then
+      upload_args+=("--headed")
+    fi
+    upload_args+=("--host" "$host")
+    
+    upload_images "${upload_args[@]}"
+    ;;
+  -v|--version)
+    echo "gh-img-upload $VERSION"
+    exit 0
+    ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Unknown command: $command" >&2
+    usage
+    exit 1
+    ;;
+esac
