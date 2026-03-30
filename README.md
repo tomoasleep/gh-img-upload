@@ -27,6 +27,12 @@ Install playwright-cli:
 npm install -g @playwright/cli
 ```
 
+### Install Agent Skill
+
+```bash
+npx skills add tomoasleep/gh-img-upload
+```
+
 ## Usage
 
 ### Login
