@@ -65,11 +65,36 @@ upload_images() {
     exit 1
   fi
 
+  local page_title
+  page_title=$(playwright-cli eval "document.title" 2>/dev/null || echo "")
+
+  local is_404=""
+  if [[ "$page_title" == *"Page not found"* ]] || [[ "$page_title" == "404 · GitHub" ]]; then
+    is_404="true"
+  fi
+
+  local user_login
+  user_login=$(playwright-cli eval "document.querySelector('meta[name=\"user-login\"]')?.content || ''" 2>/dev/null || echo "")
+
   echo "Checking login status..." >&2
   local snapshot_output
   snapshot_output=$(playwright-cli snapshot 2>&1)
+
+  if [[ "$is_404" == "true" ]]; then
+    if [[ -z "$user_login" ]]; then
+      echo "Error: Not logged in to GitHub (received 404 while signed out)." >&2
+      echo "Run 'gh img-upload login --headed' first." >&2
+    else
+      echo "Error: Issue/PR page is not accessible (404)." >&2
+      echo "Repository or issue may not exist, or your account may not have access." >&2
+      echo "Target URL: $issue_url" >&2
+      echo "Logged in as: $user_login" >&2
+    fi
+    playwright-cli close 2>&1 | grep -E "Error" || true
+    exit 1
+  fi
   
-  if echo "$snapshot_output" | grep -qi "Sign in\|Log in"; then
+  if [[ -z "$user_login" ]] || echo "$snapshot_output" | grep -qi "Sign in to GitHub\|Username or email address\|button \"Sign in\""; then
     echo "Error: Not logged in to GitHub." >&2
     echo "Run 'gh img-upload login --headed' first." >&2
     playwright-cli close 2>&1 | grep -E "Error" || true

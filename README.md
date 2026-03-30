@@ -105,6 +105,15 @@ JSON output (`--json`):
 - Sessions are persisted in `~/.config/gh-img-upload/profiles/<host>/`
 - If login session is expired, you'll need to run `gh img-upload login --headed` again
 
+## Troubleshooting
+
+- `Error: Not logged in to GitHub.`
+  - Your persisted browser session is not valid.
+  - Run `gh img-upload login --headed` and complete login in the opened browser.
+- `Error: Issue/PR page is not accessible (404).`
+  - The target issue/PR or repository is not visible to your account.
+  - Check repository access permissions, organization SSO, and issue number.
+
 ## License
 
 MIT

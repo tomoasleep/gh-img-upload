@@ -47,9 +47,12 @@ session_login() {
     current_url=$(playwright-cli eval "window.location.href" 2>/dev/null || echo "")
     
     if [[ "$current_url" != *"/login"* ]] && [[ "$current_url" != *"/sessions"* ]] && [[ "$current_url" != *"/two-factor"* ]]; then
+      local user_login
+      user_login=$(playwright-cli eval "document.querySelector('meta[name=\"user-login\"]')?.content || ''" 2>/dev/null || echo "")
+
       local snapshot_content
       snapshot_content=$(playwright-cli snapshot 2>&1 || echo "")
-      if ! echo "$snapshot_content" | grep -qi 'Sign in\|Sign up\|Password'; then
+      if [[ -n "$user_login" ]] && ! echo "$snapshot_content" | grep -qi 'Sign in to GitHub\|Username or email address\|button "Sign in"'; then
         echo "Login successful!" >&2
         playwright-cli close >/dev/null 2>&1
         echo "Session saved to: $profile_dir" >&2
@@ -63,7 +66,8 @@ session_login() {
     fi
   done
 
-  echo "Error: Login timeout." >&2
+  echo "Error: Login timeout. Could not confirm a persisted login session." >&2
+  echo "Please run 'gh img-upload login --headed' and complete login until your account is shown." >&2
   playwright-cli close >/dev/null 2>&1
   exit 1
 }
