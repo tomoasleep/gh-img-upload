@@ -15,6 +15,7 @@ Usage: gh img-upload <command> [options]
 
 Commands:
   login   Create a browser session for GitHub (persistent login)
+  status  Show login status for GitHub session
   upload  Upload images and return URLs
 
 Upload Options:
@@ -28,12 +29,22 @@ Login Options:
   --host <host>         GitHub host (default: github.com)
   --headed              Run browser in headed mode (visible)
 
+Status Options:
+  --host <host>         GitHub host (default: github.com)
+  --json                Output as JSON format
+
 Examples:
   # Login to GitHub (opens browser for authentication)
   gh img-upload login --headed
 
   # Login to GitHub Enterprise
   gh img-upload login --host github.mycompany.com --headed
+
+  # Show login status
+  gh img-upload status
+
+  # Show login status as JSON
+  gh img-upload status --json
 
   # Upload image to an issue
   gh img-upload upload --issue 123 --image ./screenshot.png
@@ -81,6 +92,23 @@ case "$command" in
       esac
     done
     session_login "$host" "$headed"
+    ;;
+  status)
+    host="github.com"
+    json_output=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --host) host="$2"; shift 2;;
+        --json) json_output="true"; shift;;
+        -h|--help) usage; exit 0;;
+        *)
+          echo "Unknown argument: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+    session_status "$host" "$json_output"
     ;;
   upload)
     repo=""

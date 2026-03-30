@@ -71,3 +71,50 @@ session_login() {
   playwright-cli close >/dev/null 2>&1
   exit 1
 }
+
+session_status() {
+  local host="$1"
+  local json_output="$2"
+  local profile_dir
+  profile_dir=$(get_profile_dir "$host")
+
+  local profile_data_dir="${profile_dir}/Default"
+  local logged_in="false"
+  local user_login=""
+
+  if [[ -d "$profile_data_dir" ]]; then
+    local home_url
+    home_url="https://${host}/"
+
+    playwright-cli --profile "$profile_dir" open "$home_url" >/dev/null 2>&1 || true
+
+    local raw_user_login
+    raw_user_login=$(playwright-cli eval "document.querySelector('meta[name=\"user-login\"]')?.content || ''" 2>/dev/null || echo "")
+    user_login=$(echo "$raw_user_login" | sed -n '/^### /d;/^```/d;/^await page\.evaluate/d;/^[[:space:]]*$/d;s/^"//;s/"$//;p' | sed -n '1p')
+
+    local snapshot_output
+    snapshot_output=$(playwright-cli snapshot 2>&1 || echo "")
+
+    if [[ -n "$user_login" ]] && ! echo "$snapshot_output" | grep -qi 'Sign in to GitHub\|Username or email address\|button "Sign in"'; then
+      logged_in="true"
+    fi
+
+    playwright-cli close >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "$json_output" ]]; then
+    echo "{\"host\":\"$host\",\"logged_in\":$logged_in,\"user\":\"$user_login\"}"
+  else
+    if [[ "$logged_in" == "true" ]]; then
+      echo "Logged in as: $user_login (host: $host)"
+    else
+      echo "Not logged in (host: $host)"
+    fi
+  fi
+
+  if [[ "$logged_in" == "true" ]]; then
+    return 0
+  fi
+
+  return 1
+}

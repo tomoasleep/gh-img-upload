@@ -62,6 +62,19 @@ gh img-upload upload --issue 123 --image ./test.png --json
 gh img-upload upload --issue 123 --image ./test.png --headed
 ```
 
+### Status
+
+```bash
+# Show login status for github.com
+gh img-upload status
+
+# Show login status for GitHub Enterprise
+gh img-upload status --host github.mycompany.com
+
+# JSON output
+gh img-upload status --json
+```
+
 ### Output
 
 Default output (one URL per line):
@@ -98,12 +111,20 @@ JSON output (`--json`):
 | `--json` | Output as JSON format |
 | `--headed` | Run browser in headed mode (visible) - useful for debugging |
 
+### `gh img-upload status`
+
+| Option | Description |
+|--------|-------------|
+| `--host <host>` | GitHub host (default: `github.com`) |
+| `--json` | Output as JSON format |
+
 ## Notes
 
 - Issue number is required - uploads need an actual Issue/PR page
 - Comments are not modified - only URLs are returned
 - Sessions are persisted in `~/.config/gh-img-upload/profiles/<host>/`
 - If login session is expired, you'll need to run `gh img-upload login --headed` again
+- You can check current session state with `gh img-upload status`
 
 ## Troubleshooting
 

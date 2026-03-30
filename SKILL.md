@@ -97,6 +97,16 @@ gh img-upload upload --issue 123 --image ./test.png --json
 gh img-upload upload --issue 123 --image ./test.png --headed
 ```
 
+### ログイン状態の確認
+
+```bash
+# 現在のログイン状態を表示
+gh img-upload status
+
+# JSON 形式で確認
+gh img-upload status --json
+```
+
 ## 出力形式
 
 ### デフォルト出力
