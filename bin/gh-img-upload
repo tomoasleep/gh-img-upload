@@ -8,6 +8,7 @@ LIB_DIR="${SCRIPT_DIR}/../lib"
 
 source "${LIB_DIR}/session.sh"
 source "${LIB_DIR}/upload.sh"
+source "${LIB_DIR}/download.sh"
 
 usage() {
   cat <<'USAGE'
@@ -17,11 +18,19 @@ Commands:
   login   Create a browser session for GitHub (persistent login)
   status  Show login status for GitHub session
   upload  Upload images and return URLs
+  download Download a private image URL via browser session
 
 Upload Options:
   --repo <owner/repo>   Target repository (default: current repo)
   --issue <number>      Issue or PR number (required)
   --image <path>        Image file path to upload (required, can be repeated)
+  --json                Output as JSON format
+  --headed              Run browser in headed mode (visible)
+
+Download Options:
+  --url <image-url>     Image URL to download (required)
+  --output <path>       Output file path or directory (optional)
+  --host <host>         GitHub host (default: github.com)
   --json                Output as JSON format
   --headed              Run browser in headed mode (visible)
 
@@ -54,6 +63,12 @@ Examples:
 
   # JSON output
   gh img-upload upload --issue 123 --image ./test.png --json
+
+  # Download an authenticated image URL
+  gh img-upload download --url https://github.com/user-attachments/assets/xxx
+
+  # Download with explicit output path
+  gh img-upload download --url https://github.com/user-attachments/assets/xxx --output ./artifacts/image.png --json
 USAGE
 }
 
@@ -170,6 +185,49 @@ case "$command" in
     upload_args+=("--host" "$host")
     
     upload_images "${upload_args[@]}"
+    ;;
+  download)
+    url=""
+    output=""
+    json_output=""
+    headed=""
+    host="github.com"
+
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --url) url="$2"; shift 2;;
+        --output) output="$2"; shift 2;;
+        --json) json_output="true"; shift;;
+        --headed) headed="--headed"; shift;;
+        --host) host="$2"; shift 2;;
+        -h|--help) usage; exit 0;;
+        *)
+          echo "Unknown argument: $1" >&2
+          usage
+          exit 1
+          ;;
+      esac
+    done
+
+    if [[ -z "$url" ]]; then
+      echo "Error: --url is required." >&2
+      usage
+      exit 1
+    fi
+
+    download_args=("$url")
+    if [[ -n "$output" ]]; then
+      download_args+=("--output" "$output")
+    fi
+    if [[ -n "$json_output" ]]; then
+      download_args+=("--json")
+    fi
+    if [[ -n "$headed" ]]; then
+      download_args+=("--headed")
+    fi
+    download_args+=("--host" "$host")
+
+    download_image "${download_args[@]}"
     ;;
   -v|--version)
     echo "gh-img-upload $VERSION"

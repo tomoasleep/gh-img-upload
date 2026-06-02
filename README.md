@@ -68,6 +68,22 @@ gh img-upload upload --issue 123 --image ./test.png --json
 gh img-upload upload --issue 123 --image ./test.png --headed
 ```
 
+### Download Image
+
+```bash
+# Download an authenticated image URL
+gh img-upload download --url https://github.com/user-attachments/assets/xxx
+
+# Save to a specific file path
+gh img-upload download --url https://github.com/user-attachments/assets/xxx --output ./artifacts/image.png
+
+# Save into a directory (uses filename from URL)
+gh img-upload download --url https://github.com/user-attachments/assets/xxx --output ./artifacts/
+
+# JSON output
+gh img-upload download --url https://github.com/user-attachments/assets/xxx --json
+```
+
 ### Status
 
 ```bash
@@ -98,6 +114,15 @@ JSON output (`--json`):
 }
 ```
 
+Download JSON output (`--json`):
+
+```json
+{
+  "url": "https://github.com/user-attachments/assets/xxx",
+  "path": "/absolute/path/to/xxx"
+}
+```
+
 ## Options
 
 ### `gh img-upload login`
@@ -124,6 +149,16 @@ JSON output (`--json`):
 | `--host <host>` | GitHub host (default: `github.com`) |
 | `--json` | Output as JSON format |
 
+### `gh img-upload download`
+
+| Option | Description |
+|--------|-------------|
+| `--url <image-url>` | Image URL to download (required) |
+| `--output <path>` | Output file path or directory (optional) |
+| `--host <host>` | GitHub host (default: `github.com`) |
+| `--json` | Output as JSON format |
+| `--headed` | Run browser in headed mode (visible) - useful for debugging |
+
 ## Notes
 
 - Issue number is required - uploads need an actual Issue/PR page
@@ -131,6 +166,7 @@ JSON output (`--json`):
 - Sessions are persisted in `~/.config/gh-img-upload/profiles/<host>/`
 - If login session is expired, you'll need to run `gh img-upload login --headed` again
 - You can check current session state with `gh img-upload status`
+- `download` uses the persisted browser session for authenticated fetch
 
 ## Troubleshooting
 

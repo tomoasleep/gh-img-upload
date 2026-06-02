@@ -77,6 +77,22 @@ gh img-upload upload --issue 123 --image ./screenshot.png
 gh img-upload upload --repo owner/repo --issue 456 --image ./image.png
 ```
 
+### 認証付き画像のダウンロード
+
+```bash
+# 認証が必要な画像 URL をダウンロード
+gh img-upload download --url https://github.com/user-attachments/assets/xxx
+
+# 保存先を指定
+gh img-upload download --url https://github.com/user-attachments/assets/xxx --output ./artifacts/image.png
+
+# GitHub Enterprise を指定
+gh img-upload download --host github.mycompany.com --url https://github.mycompany.com/user-attachments/assets/xxx
+
+# JSON で結果を取得
+gh img-upload download --url https://github.com/user-attachments/assets/xxx --json
+```
+
 ### 複数画像のアップロード
 
 ```bash
@@ -124,6 +140,15 @@ https://github.com/user-attachments/assets/xxx
 }
 ```
 
+### download の JSON 出力 (`--json`)
+
+```json
+{
+  "url": "https://github.com/user-attachments/assets/xxx",
+  "path": "/absolute/path/to/xxx"
+}
+```
+
 ## セッション管理
 
 - セッションは `~/.config/gh-img-upload/profiles/<host>/` に保存
@@ -140,6 +165,8 @@ https://github.com/user-attachments/assets/xxx
 - Issue/PR 番号が必須（アップロードには実際の Issue/PR ページが必要）
 - コメントは作成されない（URL のみ返却）
 - GitHub Enterprise にも対応
+- `download` はログイン済みセッションが必須
+- `download` は URL 直指定で 1 件ずつ実行
 
 ## トラブルシューティング
 
