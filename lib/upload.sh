@@ -44,9 +44,16 @@ upload_images() {
   echo "Waiting for page to load..." >&2
   local max_wait=120
   local waited=0
+  local last_eval_error=""
   while [[ $waited -lt $max_wait ]]; do
     local current_url
-    current_url=$(playwright-cli eval "window.location.href" 2>/dev/null || echo "")
+    local eval_output
+    if eval_output=$(playwright-cli eval "window.location.href" 2>&1); then
+      current_url="$eval_output"
+    else
+      current_url=""
+      last_eval_error="$eval_output"
+    fi
     
     if [[ "$current_url" == *"$host"* && ( "$current_url" == *"/issues/"* || "$current_url" == *"/pull/"* ) ]]; then
       echo "Page loaded." >&2
@@ -61,12 +68,21 @@ upload_images() {
 
   if [[ $waited -ge $max_wait ]]; then
     echo "Error: Timeout waiting for page to load." >&2
+    if [[ -n "$last_eval_error" ]]; then
+      echo "Last playwright-cli error:" >&2
+      echo "$last_eval_error" >&2
+    fi
     playwright-cli close 2>&1 | grep -E "Error" || true
     exit 1
   fi
 
   local page_title
-  page_title=$(playwright-cli eval "document.title" 2>/dev/null || echo "")
+  if ! page_title=$(playwright-cli eval "document.title" 2>&1); then
+    echo "Error: Failed to evaluate page title." >&2
+    echo "$page_title" >&2
+    playwright-cli close 2>&1 | grep -E "Error" || true
+    exit 1
+  fi
 
   local is_404=""
   if [[ "$page_title" == *"Page not found"* ]] || [[ "$page_title" == "404 · GitHub" ]]; then
@@ -74,11 +90,21 @@ upload_images() {
   fi
 
   local user_login
-  user_login=$(playwright-cli eval "document.querySelector('meta[name=\"user-login\"]')?.content || ''" 2>/dev/null || echo "")
+  if ! user_login=$(playwright-cli eval "document.querySelector('meta[name=\"user-login\"]')?.content || ''" 2>&1); then
+    echo "Error: Failed to evaluate GitHub login status." >&2
+    echo "$user_login" >&2
+    playwright-cli close 2>&1 | grep -E "Error" || true
+    exit 1
+  fi
 
   echo "Checking login status..." >&2
   local snapshot_output
-  snapshot_output=$(playwright-cli snapshot 2>&1)
+  if ! snapshot_output=$(playwright-cli snapshot 2>&1); then
+    echo "Error: Failed to get page snapshot while checking login status." >&2
+    echo "$snapshot_output" >&2
+    playwright-cli close 2>&1 | grep -E "Error" || true
+    exit 1
+  fi
 
   if [[ "$is_404" == "true" ]]; then
     if [[ -z "$user_login" ]]; then
@@ -102,16 +128,18 @@ upload_images() {
   fi
 
   local snapshot_file
-  snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/')
+  snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/' || true)
 
   if [[ -z "$snapshot_file" || ! -f "$snapshot_file" ]]; then
     echo "Error: Failed to get page snapshot." >&2
+    echo "Snapshot output:" >&2
+    echo "$snapshot_output" >&2
     playwright-cli close 2>&1 | grep -E "Error" || true
     exit 1
   fi
 
   local upload_button_ref
-  upload_button_ref=$(grep -o 'button "Paste, drop, or click to add files" \[ref=[^]]*\]' "$snapshot_file" 2>/dev/null | head -1 | grep -o 'ref=[^]]*' | cut -d= -f2)
+  upload_button_ref=$(grep -o 'button "Paste, drop, or click to add files" \[ref=[^]]*\]' "$snapshot_file" 2>/dev/null | head -1 | grep -o 'ref=[^]]*' | cut -d= -f2 || true)
 
   if [[ -z "$upload_button_ref" ]]; then
     echo "Error: Could not find upload button on the page." >&2
@@ -161,28 +189,68 @@ upload_images() {
     
     echo "Uploading: $filename" >&2
 
-    snapshot_output=$(playwright-cli snapshot 2>&1)
-    snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/')
-    upload_button_ref=$(grep -o 'button "Paste, drop, or click to add files" \[ref=[^]]*\]' "$snapshot_file" 2>/dev/null | head -1 | grep -o 'ref=[^]]*' | cut -d= -f2)
+    if ! snapshot_output=$(playwright-cli snapshot 2>&1); then
+      echo "Error: Failed to get page snapshot before upload." >&2
+      echo "$snapshot_output" >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
+      playwright-cli close 2>&1 | grep -E "Error" || true
+      exit 1
+    fi
+    snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/' || true)
+    if [[ -z "$snapshot_file" || ! -f "$snapshot_file" ]]; then
+      echo "Error: Failed to get page snapshot before upload." >&2
+      echo "Snapshot output:" >&2
+      echo "$snapshot_output" >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
+      playwright-cli close 2>&1 | grep -E "Error" || true
+      exit 1
+    fi
+    upload_button_ref=$(grep -o 'button "Paste, drop, or click to add files" \[ref=[^]]*\]' "$snapshot_file" 2>/dev/null | head -1 | grep -o 'ref=[^]]*' | cut -d= -f2 || true)
 
     if [[ -z "$upload_button_ref" ]]; then
       echo "Error: Upload button not found." >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
       playwright-cli close 2>&1 | grep -E "Error" || true
       exit 1
     fi
 
     local click_result
-    click_result=$(playwright-cli click "$upload_button_ref" 2>&1)
+    if ! click_result=$(playwright-cli click "$upload_button_ref" 2>&1); then
+      echo "Error: Failed to click upload button." >&2
+      echo "$click_result" >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
+      playwright-cli close 2>&1 | grep -E "Error" || true
+      exit 1
+    fi
     if echo "$click_result" | grep -qi "error.*failed\|error.*not found"; then
       echo "Error: Failed to click upload button." >&2
       echo "$click_result" >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
       playwright-cli close 2>&1 | grep -E "Error" || true
       exit 1
     fi
     sleep 0.5
 
     local upload_result
-    upload_result=$(playwright-cli upload "$upload_path" 2>&1)
+    if ! upload_result=$(playwright-cli upload "$upload_path" 2>&1); then
+      echo "Error: Failed to upload file." >&2
+      echo "$upload_result" >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
+      playwright-cli close 2>&1 | grep -E "Error" || true
+      exit 1
+    fi
     if echo "$upload_result" | grep -qi "Error.*access denied\|Error.*outside allowed"; then
       echo "Error: Failed to upload file." >&2
       echo "$upload_result" >&2
@@ -194,11 +262,29 @@ upload_images() {
     fi
     sleep 2
 
-    snapshot_output=$(playwright-cli snapshot 2>&1)
-    snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/')
+    if ! snapshot_output=$(playwright-cli snapshot 2>&1); then
+      echo "Error: Failed to get page snapshot after upload." >&2
+      echo "$snapshot_output" >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
+      playwright-cli close 2>&1 | grep -E "Error" || true
+      exit 1
+    fi
+    snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/' || true)
+    if [[ -z "$snapshot_file" || ! -f "$snapshot_file" ]]; then
+      echo "Error: Failed to get page snapshot after upload." >&2
+      echo "Snapshot output:" >&2
+      echo "$snapshot_output" >&2
+      for tf in "${temp_files[@]}"; do
+        rm -f "$tf" 2>/dev/null
+      done
+      playwright-cli close 2>&1 | grep -E "Error" || true
+      exit 1
+    fi
     
     local upload_url
-    upload_url=$(grep -oE 'src="https://[^"]+/user-attachments/assets/[^"]*"' "$snapshot_file" 2>/dev/null | tail -1 | sed 's/src="//;s/"$//')
+    upload_url=$(grep -oE 'src="https://[^"]+/user-attachments/assets/[^"]*"' "$snapshot_file" 2>/dev/null | tail -1 | sed 's/src="//;s/"$//' || true)
 
     if [[ -z "$upload_url" ]]; then
       echo "Error: Upload completed but URL not found in page." >&2
