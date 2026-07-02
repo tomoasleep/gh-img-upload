@@ -167,6 +167,7 @@ Download JSON output (`--json`):
 - If login session is expired, you'll need to run `gh img-upload login --headed` again
 - You can check current session state with `gh img-upload status`
 - `download` uses the persisted browser session for authenticated fetch
+- If the upload button or the uploaded image URL can't be found on the page, `upload` automatically dumps the page HTML to a temp file and prints its path to stderr for debugging
 
 ## Troubleshooting
 
@@ -176,6 +177,8 @@ Download JSON output (`--json`):
 - `Error: Issue/PR page is not accessible (404).`
   - The target issue/PR or repository is not visible to your account.
   - Check repository access permissions, organization SSO, and issue number.
+- `Error: Could not find upload button on the page.` / `Error: Upload button not found.` / `Error: Upload completed but URL not found in page.`
+  - Check the `Dumped page HTML to <path>` line printed to stderr and inspect the dumped HTML file to see the actual page state at the time of failure.
 
 ## License
 

@@ -1,3 +1,39 @@
+get_snapshot_content() {
+  local snapshot_output="$1"
+  local snapshot_file
+  snapshot_file=$(printf '%s\n' "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/' || true)
+
+  if [[ -n "$snapshot_file" && -f "$snapshot_file" ]]; then
+    cat "$snapshot_file"
+  else
+    printf '%s\n' "$snapshot_output"
+  fi
+}
+
+get_upload_button_ref() {
+  local snapshot_content="$1"
+  printf '%s\n' "$snapshot_content" | grep -o 'button "Paste, drop, or click to add files" \[ref=[^]]*\]' | head -1 | grep -o 'ref=[^]]*' | cut -d= -f2 || true
+}
+
+get_upload_url() {
+  local snapshot_content="$1"
+  printf '%s\n' "$snapshot_content" | grep -oE 'src="https://[^"]+/user-attachments/assets/[^"]*"' | tail -1 | sed 's/src="//;s/"$//' || true
+}
+
+dump_page_html() {
+  local html
+  if ! html=$(playwright-cli --raw eval "document.documentElement.outerHTML" 2>&1); then
+    echo "Failed to dump page HTML." >&2
+    echo "$html" >&2
+    return
+  fi
+
+  local dump_file
+  dump_file=$(mktemp "${TMPDIR:-/tmp}/gh-img-upload-html-dump-XXXXXX.html")
+  printf '%s\n' "$html" > "$dump_file"
+  echo "Dumped page HTML to $dump_file" >&2
+}
+
 upload_images() {
   local repo="$1"
   local issue="$2"
@@ -127,10 +163,10 @@ upload_images() {
     exit 1
   fi
 
-  local snapshot_file
-  snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/' || true)
+  local snapshot_content
+  snapshot_content=$(get_snapshot_content "$snapshot_output")
 
-  if [[ -z "$snapshot_file" || ! -f "$snapshot_file" ]]; then
+  if [[ -z "$snapshot_content" ]]; then
     echo "Error: Failed to get page snapshot." >&2
     echo "Snapshot output:" >&2
     echo "$snapshot_output" >&2
@@ -139,7 +175,7 @@ upload_images() {
   fi
 
   local upload_button_ref
-  upload_button_ref=$(grep -o 'button "Paste, drop, or click to add files" \[ref=[^]]*\]' "$snapshot_file" 2>/dev/null | head -1 | grep -o 'ref=[^]]*' | cut -d= -f2 || true)
+  upload_button_ref=$(get_upload_button_ref "$snapshot_content")
 
   if [[ -z "$upload_button_ref" ]]; then
     echo "Error: Could not find upload button on the page." >&2
@@ -147,6 +183,7 @@ upload_images() {
     echo "  - You don't have permission to comment on this issue" >&2
     echo "  - The issue doesn't exist" >&2
     echo "  - You are not logged in" >&2
+    dump_page_html
     playwright-cli close 2>&1 | grep -E "Error" || true
     exit 1
   fi
@@ -198,8 +235,8 @@ upload_images() {
       playwright-cli close 2>&1 | grep -E "Error" || true
       exit 1
     fi
-    snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/' || true)
-    if [[ -z "$snapshot_file" || ! -f "$snapshot_file" ]]; then
+    snapshot_content=$(get_snapshot_content "$snapshot_output")
+    if [[ -z "$snapshot_content" ]]; then
       echo "Error: Failed to get page snapshot before upload." >&2
       echo "Snapshot output:" >&2
       echo "$snapshot_output" >&2
@@ -209,10 +246,11 @@ upload_images() {
       playwright-cli close 2>&1 | grep -E "Error" || true
       exit 1
     fi
-    upload_button_ref=$(grep -o 'button "Paste, drop, or click to add files" \[ref=[^]]*\]' "$snapshot_file" 2>/dev/null | head -1 | grep -o 'ref=[^]]*' | cut -d= -f2 || true)
+    upload_button_ref=$(get_upload_button_ref "$snapshot_content")
 
     if [[ -z "$upload_button_ref" ]]; then
       echo "Error: Upload button not found." >&2
+      dump_page_html
       for tf in "${temp_files[@]}"; do
         rm -f "$tf" 2>/dev/null
       done
@@ -271,8 +309,8 @@ upload_images() {
       playwright-cli close 2>&1 | grep -E "Error" || true
       exit 1
     fi
-    snapshot_file=$(echo "$snapshot_output" | grep '\[Snapshot\]' | sed 's/.*(\(.*\))/\1/' || true)
-    if [[ -z "$snapshot_file" || ! -f "$snapshot_file" ]]; then
+    snapshot_content=$(get_snapshot_content "$snapshot_output")
+    if [[ -z "$snapshot_content" ]]; then
       echo "Error: Failed to get page snapshot after upload." >&2
       echo "Snapshot output:" >&2
       echo "$snapshot_output" >&2
@@ -284,11 +322,12 @@ upload_images() {
     fi
     
     local upload_url
-    upload_url=$(grep -oE 'src="https://[^"]+/user-attachments/assets/[^"]*"' "$snapshot_file" 2>/dev/null | tail -1 | sed 's/src="//;s/"$//' || true)
+    upload_url=$(get_upload_url "$snapshot_content")
 
     if [[ -z "$upload_url" ]]; then
       echo "Error: Upload completed but URL not found in page." >&2
       echo "The upload may have failed silently." >&2
+      dump_page_html
       for tf in "${temp_files[@]}"; do
         rm -f "$tf" 2>/dev/null
       done
