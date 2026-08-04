@@ -17,7 +17,19 @@ get_upload_button_ref() {
 
 get_upload_url() {
   local snapshot_content="$1"
-  printf '%s\n' "$snapshot_content" | grep -oE 'src="https://[^"]+/user-attachments/assets/[^"]*"' | tail -1 | sed 's/src="//;s/"$//' || true
+  printf '%s\n' "$snapshot_content" | grep -oE 'https://[^" ]+/user-attachments/(assets|files)/[^" )]+' | tail -1 || true
+}
+
+get_upload_markdown() {
+  local filename="$1"
+  local upload_url="$2"
+  local mime_type="$3"
+
+  if [[ "$mime_type" == image/* ]]; then
+    printf '![%s](%s)' "$filename" "$upload_url"
+  else
+    printf '[%s](%s)' "$filename" "$upload_url"
+  fi
 }
 
 dump_page_html() {
@@ -29,7 +41,7 @@ dump_page_html() {
   fi
 
   local dump_file
-  dump_file=$(mktemp "${TMPDIR:-/tmp}/gh-img-upload-html-dump-XXXXXX.html")
+  dump_file=$(mktemp "${TMPDIR:-/tmp}/gh-img-upload-html-dump-XXXXXX")
   printf '%s\n' "$html" > "$dump_file"
   echo "Dumped page HTML to $dump_file" >&2
 }
@@ -298,35 +310,43 @@ upload_images() {
       playwright-cli close 2>&1 | grep -E "Error" || true
       exit 1
     fi
-    sleep 2
-
-    if ! snapshot_output=$(playwright-cli snapshot 2>&1); then
-      echo "Error: Failed to get page snapshot after upload." >&2
-      echo "$snapshot_output" >&2
-      for tf in "${temp_files[@]}"; do
-        rm -f "$tf" 2>/dev/null
-      done
-      playwright-cli close 2>&1 | grep -E "Error" || true
-      exit 1
-    fi
-    snapshot_content=$(get_snapshot_content "$snapshot_output")
-    if [[ -z "$snapshot_content" ]]; then
-      echo "Error: Failed to get page snapshot after upload." >&2
-      echo "Snapshot output:" >&2
-      echo "$snapshot_output" >&2
-      for tf in "${temp_files[@]}"; do
-        rm -f "$tf" 2>/dev/null
-      done
-      playwright-cli close 2>&1 | grep -E "Error" || true
-      exit 1
-    fi
-    
     local upload_url
-    upload_url=$(get_upload_url "$snapshot_content")
+    local upload_waited=0
+    upload_url=""
+    while [[ -z "$upload_url" && $upload_waited -lt $max_wait ]]; do
+      if ! snapshot_output=$(playwright-cli snapshot 2>&1); then
+        echo "Error: Failed to get page snapshot after upload." >&2
+        echo "$snapshot_output" >&2
+        for tf in "${temp_files[@]}"; do
+          rm -f "$tf" 2>/dev/null
+        done
+        playwright-cli close 2>&1 | grep -E "Error" || true
+        exit 1
+      fi
+      snapshot_content=$(get_snapshot_content "$snapshot_output")
+      if [[ -z "$snapshot_content" ]]; then
+        echo "Error: Failed to get page snapshot after upload." >&2
+        echo "Snapshot output:" >&2
+        echo "$snapshot_output" >&2
+        for tf in "${temp_files[@]}"; do
+          rm -f "$tf" 2>/dev/null
+        done
+        playwright-cli close 2>&1 | grep -E "Error" || true
+        exit 1
+      fi
+
+      upload_url=$(get_upload_url "$snapshot_content")
+      if [[ -z "$upload_url" ]]; then
+        sleep 1
+        upload_waited=$((upload_waited + 1))
+      fi
+    done
 
     if [[ -z "$upload_url" ]]; then
       echo "Error: Upload completed but URL not found in page." >&2
       echo "The upload may have failed silently." >&2
+      echo "Upload command output:" >&2
+      echo "$upload_result" >&2
       dump_page_html
       for tf in "${temp_files[@]}"; do
         rm -f "$tf" 2>/dev/null
@@ -368,12 +388,16 @@ upload_images() {
     local idx=0
     for url in "${upload_urls[@]}"; do
       local img_filename
+      local mime_type
       img_filename=$(basename "${images[$idx]}")
+      mime_type=$(file --brief --mime-type "${images[$idx]}")
+      local markdown
+      markdown=$(get_upload_markdown "$img_filename" "$url" "$mime_type")
       if [[ "$first" == "true" ]]; then
-        markdown_json="\"![${img_filename}](${url})\""
+        markdown_json="\"${markdown}\""
         first=false
       else
-        markdown_json="${markdown_json}, \"![${img_filename}](${url})\""
+        markdown_json="${markdown_json}, \"${markdown}\""
       fi
       idx=$((idx + 1))
     done
